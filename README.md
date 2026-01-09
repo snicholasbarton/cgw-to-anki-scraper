@@ -1,5 +1,7 @@
 # Chinese Grammar Wiki to Anki Scraper
 
+[![CI](https://github.com/snicholasbarton/cgw-to-anki-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/snicholasbarton/cgw-to-anki-scraper/actions/workflows/ci.yml)
+
 One of the most valuable tools I've found while trying to learn Chinese is [this shared Anki deck](https://ankiweb.net/shared/info/782551504) that has all the example sentences for each grammar point listed on the **[Chinese Grammar Wiki](https://resources.allsetlearning.com/chinese/grammar/Main_Page)**, organised into well-formatted flashcards. Sadly, that deck hasn't been updated since 2018 while the source content has been expanded and updated over time. The original logic that was used to generate this deck is also now outdated after some formatting changes to the Wiki.
 
 This is my personal script designed to scrape all the example sentences and grammar explanations and put them in the same format as the original deck. It's also a good learning tool for me to brush up on the latest tools to write a Python scraping script!
