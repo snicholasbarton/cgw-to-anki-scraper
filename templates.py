@@ -142,7 +142,8 @@ height: 10px;
 """
 
 # Stable, unique IDs for models, generated with random.randrange(1 << 30, 1 << 31)
-# Unique 10-digit integers so we don't overwrite other decks & can diff existing decks generated with this script
+# Unique 10-digit integers so we don't overwrite other decks
+# and can diff existing decks generated with this script
 TRANSLATION_MODEL_ID = 2144434948
 VALID_EXAMPLE_MODEL_ID = 1139990969
 INVALID_EXAMPLE_MODEL_ID = 1513257399
