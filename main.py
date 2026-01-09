@@ -1,17 +1,19 @@
 import argparse
 import asyncio
-from bs4 import BeautifulSoup, Tag
-import genanki
-import nodriver as uc
 import os
-from pypinyin import pinyin, Style
 import random
 import sqlite3
 import tempfile
-from templates import TRANSLATION_MODEL, VALID_EXAMPLE_MODEL, INVALID_EXAMPLE_MODEL
+import zipfile
 from typing import TypedDict
 from urllib.parse import urlparse
-import zipfile
+
+import genanki
+import nodriver as uc
+from bs4 import BeautifulSoup, Tag
+from pypinyin import Style, pinyin
+
+from templates import INVALID_EXAMPLE_MODEL, TRANSLATION_MODEL, VALID_EXAMPLE_MODEL
 
 # Constants
 
@@ -62,8 +64,10 @@ def valid_cgw_url(url: Url):
     """Checks if a string is a valid CGW URL with a scheme and network location."""
     try:
         result = urlparse(url)
-        # Check if both scheme (e.g., http) and netloc (e.g., google.com) exist, and that it's (roughly) a CGW grammar point page
-        if all([result.scheme, result.netloc]) and BASE_URL in url and url.lower() not in [level.lower() for level in LEVELS_URLS]:
+        # Check if both scheme (e.g., http) and netloc (e.g., google.com) exist
+        # and that it's (roughly) a CGW grammar point page
+        if (all([result.scheme, result.netloc])
+            and BASE_URL in url and url.lower() not in [level.lower() for level in LEVELS_URLS]):
             return url
         raise ValueError
     except ValueError:
@@ -82,7 +86,7 @@ async def human_scroll(page):
     """Scrolls down some fraction of the page to mimic a human."""
     try:
         total_height = await page.evaluate("document.body.scrollHeight")
-        scroll_step = random.randint(int(total_height/5), int(total_height/1.5))        
+        scroll_step = random.randint(int(total_height/5), int(total_height/1.5))
         await page.evaluate(f"window.scrollTo(0, {scroll_step})")
     except Exception:
         # sometimes we fail to get the total page height, just ignore since it's not important that we succeed
@@ -99,16 +103,16 @@ async def get_with_verification(browser, urls: list[Url], is_test=False) -> list
         if url in BLOCKLIST: # ignore blocklisted urls
             continue
         page = await browser.get(url)
-    
+
         # Cloudflare often needs a moment to 'validate' the connection
         # Nodriver handles the wait automatically, but a small delay helps
         if not has_validated:
-            await page.wait(6) 
+            await page.wait(6)
             has_validated = True
-    
+
         url_and_pages.append({"url":url, "content":await page.get_content()})
-        
-        # Sometimes scroll the page, and rate limit, to keep Cloudflare from marking us as a bot
+
+        # Rate limit & occasionally scroll to keep Cloudflare from marking us as a bot
         if random.random() < 0.5:
             await human_scroll(page)
         await asyncio.sleep(random.uniform(1,4.5))
@@ -139,16 +143,13 @@ def parse_point_page(url_and_point_page: dict[str, str]) -> list[CardContent]:
     title = soup.find("h1").get_text(strip=True)
     example_divs = soup.find_all("div", class_="liju")
 
-    # we handle the dialogs and the simple examples differently
-    # example_others = soup.select("div.liju ul:not(.dialog) li") # this gets individual examples in a <li>
-
     parsed = []
     for div in example_divs:
-        # this 
-        # get_text might break if there's ever a page with examples but no structure
-        structure = div.find_previous("div", class_="jiegou").get_text(strip=True)
+        structure_div = div.find_previous("div", class_="jiegou")
+        # some points don't have associated structures on the page
+        structure = structure_div.get_text(strip=True) if structure_div is not None else ""
 
-        # determine if it's a dialog or not: we handle the dialogs and the simple examples differently
+        # determine if it's a dialog or not
         ul = div.find("ul")
         is_dialog = "dialog" in ul.get("class", [])
         lis = ul.find_all("li")
@@ -166,18 +167,20 @@ def parse_point_page(url_and_point_page: dict[str, str]) -> list[CardContent]:
                 if speaker_tag is None:
                     print(f"Malformed dialog example on page {url} does not have required speaker tag")
                     continue
-                        
-                speaker_text = speaker_tag.get_text(strip=True) # we need to prefix all of the hanzi, pinyin, and translation from this <li> with this text
+
+                # we must prefix hanzi, pinyin, and translation with this text
+                speaker_text = speaker_tag.get_text(strip=True)
                 speaker_tag.decompose()
-                
+
                 hanzi_text, pinyin_text, trans_text, expl_text = extract_and_decompose_li_components(li)
-                
+
                 lines_hanzi.append(maybe_prepend_speaker_text(hanzi_text, speaker_text))
                 lines_pinyin.append(maybe_prepend_speaker_text(pinyin_text, speaker_text))
                 lines_trans.append(maybe_prepend_speaker_text(trans_text, speaker_text))
                 lines_expl.append(maybe_prepend_speaker_text(expl_text, speaker_text))
 
-            # join all the lines with newlines - remember Anki cards are rendered as HTML, use <br> not \n
+            # join all the lines with newlines
+            # remember Anki cards are rendered as HTML, use <br> not \n
             hanzi_text = "<br>".join(lines_hanzi).strip()
             pinyin_text = "<br>".join(filter(None, lines_pinyin))
             trans_text = "<br>".join(filter(None, lines_trans))
@@ -252,7 +255,7 @@ def extract_and_decompose_li_components(li_tag: Tag) -> tuple[str, str | None, s
     expl_text = maybe_get_tag_text_and_decompose(expl_tag)
 
     hanzi_text = li_tag.get_text(strip=True).replace(' ', '')
-    
+
     return hanzi_text, pinyin_text, trans_text, expl_text
 
 
@@ -283,18 +286,18 @@ def get_existing_cards_from_deck(path_to_deck: str) -> dict[str, dict[str, str]]
         try:
             with zipfile.ZipFile(path_to_deck, 'r') as z:
                 z.extractall(temp_dir)
-            
+
             db_path = os.path.join(temp_dir, 'collection.anki2')
             if not os.path.exists(db_path):
                 db_path = os.path.join(temp_dir, 'collection.anki21')
-            
+
             with sqlite3.connect(db_path) as conn:
                 cursor = conn.cursor()
                 # Fetch all notes (cards are linked to notes via the notes table)
                 cursor.execute("SELECT flds FROM notes")
                 rows = cursor.fetchall()
                 print(f"Fetched {len(rows)} from existing deck.")
-                
+
                 for row in rows:
                     # Anki fields are separated by 0x1f
                     fields = row[0].split('\x1f')
@@ -316,7 +319,7 @@ def diff_existing_and_scraped(existing_cards, scraped_cards: list[CardContent]) 
     stats: DeckDiffStats = {"new": 0, "update": 0, "skipped": 0}
     for card in scraped_cards:
         hanzi = card["hanzi"]
-        
+
         if hanzi not in existing_cards:
             cards_to_export.append(card)
             stats["new"] += 1
@@ -356,7 +359,7 @@ def write_to_anki_deck(anki_cards: list[CardContent], output_filename=DEFAULT_DE
         )
         deck.add_note(note)
     genanki.Package(deck).write_to_file(output_filename)
-    
+
 
 # TODO: create a "cheatsheet" with the interesting BeautifulSoup methods that I used
 async def main():
@@ -371,24 +374,24 @@ async def main():
     if args.test_url and not args.test:
         # not literally true but enforce good user practice
         parser.error("--test-url requires the --test flag to be set.")
-    
+
     try:
         # start the browser - do this just once per script invocation to reuse the session & verification cookie
         browser = await open_browser()
-        
+
         # if a test url is passed, don't bother going through the level pages, just get it immediately
         if args.test and args.test_url:
             point_urls: list[Url] = [args.test_url]
         else:
             # scrape all the levels pages
             level_pages: list[UrlAndPageContent] = await get_with_verification(browser, LEVELS_URLS, args.test)
-            
+
             # extact point page urls
             point_urls: list[Url] = parse_level_pages(level_pages)
-        
+
         # scrape all the point pages
-        point_contents_raw: list[UrlAndPageContent] = await get_with_verification(browser, [point_url for point_url in point_urls], args.test)
-        
+        point_contents_raw: list[UrlAndPageContent] = await get_with_verification(browser, point_urls, args.test)
+
         # parse the point pages
         cards_to_export: list[CardContent] = parse_point_pages(point_contents_raw)
         stats: DeckDiffStats = {"new": len(cards_to_export), "update": 0, "skipped": 0}
@@ -398,7 +401,7 @@ async def main():
         if path_to_deck is not None and os.path.exists(path_to_deck):
             existing_cards = get_existing_cards_from_deck(args.deck)
             cards_to_export, stats = diff_existing_and_scraped(existing_cards, cards_to_export)
-        
+
         if len(cards_to_export) == 0:
             print("Nothing to export!")
         else:
