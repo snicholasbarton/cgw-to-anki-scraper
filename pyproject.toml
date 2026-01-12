@@ -18,11 +18,13 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=7.1.0",
+    "pytest>=9.0.2",
     "ruff>=0.14.11",
     "ty>=0.0.10",
 ]
 [tool.ty.src]
-exclude = ["*.ipynb", ".ipynb_checkpoints"]
+exclude = ["*.ipynb", ".ipynb_checkpoints", "tests/*"]
+
 [tool.ruff.lint]
 extend-select = [
     "F",        # Pyflakes rules
@@ -38,4 +40,21 @@ extend-select = [
     "SIM",      # Common simplification rules
     "TID",      # Some good import practices
     "TC",       # Enforce importing certain types in a TYPE_CHECKING block
+]
+
+[tool.pytest.ini_options]
+# Minimum required pytest version
+minversion = "9.0"
+
+# -rA: Show summary of all tests (passes, failures, errors, skips)
+# --strict-markers: Error if you use a marker not defined in 'markers' (prevents typos)
+addopts = "-rA --strict-markers"
+
+testpaths = [
+    "tests"
+]
+# No custom test markers yet, so omit
+
+filterwarnings = [
+    "error",                        # Turn all warnings into errors (strict mode)
 ]

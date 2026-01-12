@@ -60,7 +60,7 @@ class DeckDiffStats(TypedDict):
 
 
 
-def valid_cgw_url(url: Url):
+def is_valid_cgw_url(url: Url):
     """Checks if a string is a valid CGW URL with a scheme and network location."""
     try:
         result = urlparse(url)
@@ -171,6 +171,9 @@ def parse_point_page(url_and_point_page: dict[str, str]) -> list[CardContent]:
                 # we must prefix hanzi, pinyin, and translation with this text
                 speaker_text = speaker_tag.get_text(strip=True)
                 speaker_tag.decompose()
+                if speaker_text is None:
+                    print(f"Malformed dialog example on page {url} does not have required speaker labels")
+                    continue
 
                 hanzi_text, pinyin_text, trans_text, expl_text = extract_and_decompose_li_components(li)
 
@@ -368,7 +371,7 @@ async def main():
     parser.add_argument('-d', '--deck', help="Path to existing .apkg deck to update with new examples. New deck is created if not specified.", default=None)
     parser.add_argument('-o', '--output', help=f"Output filename for new cards. Writes to \"{DEFAULT_DECK_LOCATION}\" if not specified.", default=DEFAULT_DECK_LOCATION)
     parser.add_argument('-t', '--test', action='store_true', help="If enabled, only reads 1 grammar point from 1 page. Use for testing that script works on setup and debugging")
-    parser.add_argument('--test-url', type=valid_cgw_url, help="If this option is set alongside the --test flag, then we will run the script only for the given page. Must be a valid Chinese Grammar Wiki grammar point URL", default=None)
+    parser.add_argument('--test-url', type=is_valid_cgw_url, help="If this option is set alongside the --test flag, then we will run the script only for the given page. Must be a valid Chinese Grammar Wiki grammar point URL", default=None)
     args = parser.parse_args()
 
     if args.test_url and not args.test:
